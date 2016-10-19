@@ -1,4 +1,5 @@
 import feedparser
+import requests
 
 from settings import UPWORK_FEED_URL, TELEGRAM_BOT_TOKEN
 
@@ -37,15 +38,28 @@ class Job:
 
 
 class TelegramAPIManager:
-    telegram_bot_api_url = 'https://api.telegram.org/bot'
+    telegram_bot_api_url = 'https://api.telegram.org/bot{}/{}'
     parse_mode = 'markdown'
 
     def __init__(self, chat_id):
         self.chat_id = chat_id
         self.token = TELEGRAM_BOT_TOKEN
+        self.params = {
+            'chat_id': self.chat_id,
+            'parse_mode': self.parse_mode,
+        }
+
+    def send_message(self, text):
+        self.params.update({'text': text})
+        full_url = self.telegram_bot_api_url.format(TELEGRAM_BOT_TOKEN, 'sendMessage')
+        response = requests.get(url=full_url,
+                                params=self.params)
+        print(response.json())
+
 
 
 my_upwork_feed = RSSManager(UPWORK_FEED_URL)
+my_telegram = TelegramAPIManager(-1001024228888)
 my_upwork_feed.parse_feed_by_url()
 if my_upwork_feed.feed:
     jobs = my_upwork_feed.feed
@@ -53,7 +67,7 @@ if my_upwork_feed.feed:
         title, published, link = job['title'], job['published'], job['link']
         new_job = Job(title, published, link)
         new_job.format_job_to_message()
-        print(new_job.formatted)
+        my_telegram.send_message(new_job.formatted)
 
 
 
