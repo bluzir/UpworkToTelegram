@@ -1,5 +1,5 @@
 # -*- coding:utf-8 -*-
-
+import logging
 import shelve
 from time import sleep
 
@@ -7,6 +7,8 @@ import feedparser
 import requests
 
 from settings import UPWORK_FEED_URL, TELEGRAM_BOT_TOKEN, CHAT_ID
+
+logging.basicConfig(level=logging.INFO)
 
 
 class RSSManager:
@@ -42,6 +44,7 @@ class JobManager:
 
     def get_new_jobs(self):
         if not self.new_jobs_available():
+            logging.info('No new jobs available, waiting')
             return []
 
         last_link = self.state.get_value_from_key('last_link')
@@ -102,7 +105,7 @@ class TelegramAPIManager:
         response = requests.get(url=full_url, params=self.params)
         decode = response.json()
         if decode['ok']:
-            print('Successfully sent message to channel')
+            logging.info('Successfully sent message')
 
 
 class TelegramJobPoster(TelegramAPIManager):
@@ -141,14 +144,7 @@ class StateManager:
 
 
 def main():
-    # feed = FeedClient(feed_link)
-    # telegram = TelegramJobPoster()
-    #
-    # for job in feed.get_new_jobs():
-    #     telegram.post(job)
-
-
-    ###
+    logging.info('Start working')
     my_states = StateManager('states')
     my_upwork_feed = RSSManager(UPWORK_FEED_URL)
     my_upwork_feed.parse_feed()
@@ -158,7 +154,7 @@ def main():
         for job in jobs:
             TelegramJobPoster(job, my_states).post_job()
             sleep(1)
-        sleep(10)
+        sleep(30)
 
 
 if __name__ == '__main__':
