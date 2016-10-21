@@ -1,3 +1,5 @@
+# -*- coding:utf-8 -*-
+
 import shelve
 from time import sleep
 
@@ -26,46 +28,62 @@ class JobManager:
         self.rss = rss
         self.state = state
 
-    def check_new_jobs(self):
+    def new_jobs_available(self):
         last_link = self.state.get_value_from_key('last_link')
-        if last_link:
-            current_last_link = self.rss.feed['entries'][0]['link']
-            if current_last_link == last_link:
-                return False
-            else:
-                return True
+
+        if last_link is False:
+            return True
+
+        current_last_link = self.rss.feed['entries'][0]['link']
+        if current_last_link == last_link:
+            return False
         else:
             return True
 
     def get_new_jobs(self):
-        if self.check_new_jobs():
-            last_link = self.state.get_value_from_key('last_link')
-            if last_link:
-                jobs = self.rss.feed['entries']
-                new_jobs = 0
-                for job in jobs:
-                    if job['link'] != last_link:
-                        new_jobs += 1
-                    else:
-                        print('Find new jobs: {}'.format(new_jobs))
-                        self.state.add_value_by_key('last_link', jobs[0].link)
-                        jobs = jobs[:new_jobs]
-                        return jobs
-                else:
-                    return []
-            else:
-                jobs = self.rss.feed['entries']
-                self.state.add_value_by_key('last_link', jobs[0].link)
-                return jobs
-        else:
-            print('No new jobs')
+        if not self.new_jobs_available():
             return []
+
+        last_link = self.state.get_value_from_key('last_link')
+
+        if not last_link:
+            jobs = self.rss.feed['entries']
+            self.state.add_value_by_key('last_link', jobs[0].link)
+            return Job.create_from_list(jobs)
+
+        jobs = self.rss.feed['entries']
+        new_jobs = 0
+        for job in jobs:
+            if job['link'] != last_link:
+                new_jobs += 1
+            else:
+                print('Find new jobs: {}'.format(new_jobs))
+                self.state.add_value_by_key('last_link', jobs[0].link)
+                jobs = jobs[:new_jobs]
+                return Job.create_from_list(jobs)
 
 
 class Job:
     def __init__(self, job_title, job_link):
-        self.title = job_title
+        self._set_title(job_title)
         self.link = job_link
+
+    def _set_title(self, title):
+        postfix = " - Upwork"
+        postfix_position = title.rfind(postfix)
+        if postfix_position != -1:
+            title = title[0:postfix_position]
+
+        self.title = title
+
+    @staticmethod
+    def create_from_list(job_list):
+        jobs = []
+        for job in job_list:
+            job = Job(job["title"], job["link"])
+            jobs.append(job)
+
+        return jobs
 
 
 class TelegramAPIManager:
@@ -74,8 +92,8 @@ class TelegramAPIManager:
     chat_id = CHAT_ID
     token = TELEGRAM_BOT_TOKEN
     params = {
-            'chat_id': chat_id,
-            'parse_mode': parse_mode,
+        'chat_id': chat_id,
+        'parse_mode': parse_mode,
     }
 
     def send_message(self, text):
@@ -123,17 +141,23 @@ class StateManager:
 
 
 def main():
+    # feed = FeedClient(feed_link)
+    # telegram = TelegramJobPoster()
+    #
+    # for job in feed.get_new_jobs():
+    #     telegram.post(job)
+
+
+    ###
     my_states = StateManager('states')
     my_upwork_feed = RSSManager(UPWORK_FEED_URL)
     my_upwork_feed.parse_feed()
     my_jobs = JobManager(my_upwork_feed, my_states)
     while True:
         jobs = my_jobs.get_new_jobs()
-        if jobs:
-            for job in jobs:
-                new_job = Job(job['title'], job['link'])
-                TelegramJobPoster(new_job, my_states).post_job()
-                sleep(1)
+        for job in jobs:
+            TelegramJobPoster(job, my_states).post_job()
+            sleep(1)
         sleep(10)
 
 
