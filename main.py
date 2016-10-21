@@ -43,14 +43,18 @@ class JobManager:
             if last_link:
                 jobs = self.rss.feed['entries']
                 new_jobs = 0
-                for job in jobs:
-                    if job['link'] == last_link:
-                        print('No new jobs, sleeping 30 seconds')
-                        sleep(30)
-                    else:
-                        new_jobs += 1
-                    print('Got new jobs: {}'.format(new_jobs))
-                    return jobs[:new_jobs]
+                if jobs[0]['link'] == last_link:
+                    print('No new jobs, sleeping 30 seconds')
+                    sleep(30)
+                else:
+                    for job in jobs:
+                        if job['link'] != last_link:
+                            new_jobs += 1
+                        else:
+                            print('Got new jobs: {}'.format(new_jobs))
+                            return jobs[:new_jobs]
+                print('Got new jobs: {}'.format(new_jobs))
+                return jobs[:new_jobs]
             else:
                 return reversed(self.rss.feed['entries'])
         else:
@@ -112,8 +116,10 @@ class StateManager:
         d = shelve.open(self.file)
         if key in d:
             value = d[key]
+            d.close()
             return value
         else:
+            d.close()
             return False
 
 
