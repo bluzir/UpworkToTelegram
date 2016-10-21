@@ -27,10 +27,10 @@ class JobManager:
         self.state = state
 
     def check_new_jobs(self):
-        last_id = self.state.get_value_from_key('last_link')
-        if last_id:
-            current_last_id = self.rss.feed['entries'][0]['link']
-            if current_last_id == last_id:
+        last_link = self.state.get_value_from_key('last_link')
+        if last_link:
+            current_last_link = self.rss.feed['entries'][0]['link']
+            if current_last_link == last_link:
                 return False
             else:
                 return True
@@ -38,28 +38,27 @@ class JobManager:
             return True
 
     def get_new_jobs(self):
-        if self.check_new_jobs:
+        if self.check_new_jobs():
             last_link = self.state.get_value_from_key('last_link')
             if last_link:
                 jobs = self.rss.feed['entries']
                 new_jobs = 0
-                if jobs[0]['link'] == last_link:
-                    print('No new jobs, sleeping 30 seconds')
-                    sleep(30)
+                for job in jobs:
+                    if job['link'] != last_link:
+                        new_jobs += 1
+                    else:
+                        print('Find new jobs: {}'.format(new_jobs))
+                        self.state.add_value_by_key('last_link', jobs[0].link)
+                        jobs = jobs[:new_jobs]
+                        return jobs
                 else:
-                    for job in jobs:
-                        if job['link'] != last_link:
-                            new_jobs += 1
-                        else:
-                            print('Got new jobs: {}'.format(new_jobs))
-                            return jobs[:new_jobs]
-                print('Got new jobs: {}'.format(new_jobs))
-                return jobs[:new_jobs]
+                    return []
             else:
-                return reversed(self.rss.feed['entries'])
+                jobs = self.rss.feed['entries']
+                self.state.add_value_by_key('last_link', jobs[0].link)
+                return jobs
         else:
-            print('No new jobs, sleeping 30 seconds')
-            sleep(30)
+            print('No new jobs')
             return []
 
 
@@ -86,7 +85,6 @@ class TelegramAPIManager:
         decode = response.json()
         if decode['ok']:
             print('Successfully sent message to channel')
-            sleep(3)
 
 
 class TelegramJobPoster(TelegramAPIManager):
@@ -102,7 +100,6 @@ class TelegramJobPoster(TelegramAPIManager):
         if not self.formatted:
             self.format_job_to_message()
         self.send_message(self.formatted)
-        self.states.add_value_by_key('last_link', self.job.link)
 
 
 class StateManager:
@@ -136,6 +133,8 @@ def main():
             for job in jobs:
                 new_job = Job(job['title'], job['link'])
                 TelegramJobPoster(new_job, my_states).post_job()
+                sleep(1)
+        sleep(10)
 
 
 if __name__ == '__main__':
