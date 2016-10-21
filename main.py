@@ -8,9 +8,8 @@ from settings import UPWORK_FEED_URL, TELEGRAM_BOT_TOKEN, CHAT_ID
 
 
 class RSSManager:
-    def __init__(self, url, state):
+    def __init__(self, url):
         self.url = url
-        self.state = state
         self.feed = None
 
     def parse_feed_by_url(self):
@@ -21,40 +20,48 @@ class RSSManager:
         except Exception as e:
             print(e)
 
+
+class JobManager:
+    def __init__(self, rss, state):
+        self.rss = rss
+        self.state = state
+
     def check_new_jobs(self):
-        old_pubdate = self.state.get_value_from_key('pubdate')
-        new_pubdate = self.feed['feed']['published']
-        if old_pubdate == new_pubdate:
-            return False
+        last_id = self.state.get_value_from_key('last_link')
+        if last_id:
+            current_last_id = self.rss.feed['entries'][0]['link']
+            if current_last_id == last_id:
+                return False
+            else:
+                return True
         else:
-            last_id = self.state.get_value_from_key('last_id')
-            if last_id:
-                current_last_id = self.feed['entries'][0]['id']
-                if current_last_id == last_id:
-                    return False
-                else:
-                    return True
+            return True
 
     def get_new_jobs(self):
         if self.check_new_jobs:
-            last_id = self.state.get_value_from_key('last_id')
-            jobs = self.feed['entries']
-            new_jobs = 0
-            for job in jobs:
-                if job['id'] != last_id:
-                    new_jobs += 1
-                else:
-                    print('Got new jobs: {}'.format(len(new_jobs)))
+            last_link = self.state.get_value_from_key('last_link')
+            if last_link:
+                jobs = self.rss.feed['entries']
+                new_jobs = 0
+                for job in jobs:
+                    if job['link'] == last_link:
+                        print('No new jobs, sleeping 30 seconds')
+                        sleep(30)
+                    else:
+                        new_jobs += 1
+                    print('Got new jobs: {}'.format(new_jobs))
                     return jobs[:new_jobs]
+            else:
+                return reversed(self.rss.feed['entries'])
         else:
             print('No new jobs, sleeping 30 seconds')
+            sleep(30)
             return []
 
 
 class Job:
-    def __init__(self, job_title, job_published, job_link, telegram, states):
+    def __init__(self, job_title, job_link, telegram, states):
         self.title = job_title
-        self.datetime = job_published
         self.link = job_link
         self.telegram = telegram
         self.states = states
@@ -67,7 +74,7 @@ class Job:
         if not self.formatted:
             self.format_job_to_message()
         self.telegram.send_message(self.formatted)
-        self.states.add_value_by_key('last_id', self.job['id'])
+        self.states.add_value_by_key('last_link', self.link)
 
 
 class TelegramAPIManager:
@@ -85,10 +92,11 @@ class TelegramAPIManager:
     def send_message(self, text):
         self.params.update({'text': text})
         full_url = self.telegram_bot_api_url.format(TELEGRAM_BOT_TOKEN, 'sendMessage')
-        response = requests.get(url=full_url,
-                                params=self.params)
-        print(response.json())
-        sleep(5)
+        response = requests.get(url=full_url, params=self.params)
+        decode = response.json()
+        if decode['ok']:
+            print('Successfully sent message to channel')
+            sleep(3)
 
 
 class StateManager:
@@ -111,17 +119,16 @@ class StateManager:
 
 def main():
     my_states = StateManager('states')
-    my_upwork_feed = RSSManager(UPWORK_FEED_URL, my_states)
-    my_telegram = TelegramAPIManager(CHAT_ID)
+    my_upwork_feed = RSSManager(UPWORK_FEED_URL)
     my_upwork_feed.parse_feed_by_url()
+    my_telegram = TelegramAPIManager(CHAT_ID)
+    my_jobs = JobManager(my_upwork_feed, my_states)
     while True:
-        jobs = my_upwork_feed.get_new_jobs()
+        jobs = my_jobs.get_new_jobs()
         if jobs:
             for job in jobs:
-                new_job = Job(job['title'], job['published'], job['link'], my_telegram, my_states)
+                new_job = Job(job['title'], job['link'], my_telegram, my_states)
                 new_job.post_job()
-        else:
-            sleep(30)
 
 
 if __name__ == '__main__':
