@@ -12,7 +12,7 @@ class RSSManager:
         self.url = url
         self.feed = None
 
-    def parse_feed_by_url(self):
+    def parse_feed(self):
         try:
             feed = feedparser.parse(self.url)
             if feed['status'] == 200:
@@ -64,34 +64,20 @@ class JobManager:
 
 
 class Job:
-    def __init__(self, job_title, job_link, telegram, states):
+    def __init__(self, job_title, job_link):
         self.title = job_title
         self.link = job_link
-        self.telegram = telegram
-        self.states = states
-        self.formatted = None
-
-    def format_job_to_message(self):
-        self.formatted = "{}\n[Cсылка]({})\n".format(self.title, self.link)
-
-    def post_job(self):
-        if not self.formatted:
-            self.format_job_to_message()
-        self.telegram.send_message(self.formatted)
-        self.states.add_value_by_key('last_link', self.link)
 
 
 class TelegramAPIManager:
     telegram_bot_api_url = 'https://api.telegram.org/bot{}/{}'
     parse_mode = 'markdown'
-
-    def __init__(self, chat_id):
-        self.chat_id = chat_id
-        self.token = TELEGRAM_BOT_TOKEN
-        self.params = {
-            'chat_id': self.chat_id,
-            'parse_mode': self.parse_mode,
-        }
+    chat_id = CHAT_ID
+    token = TELEGRAM_BOT_TOKEN
+    params = {
+            'chat_id': chat_id,
+            'parse_mode': parse_mode,
+    }
 
     def send_message(self, text):
         self.params.update({'text': text})
@@ -101,6 +87,22 @@ class TelegramAPIManager:
         if decode['ok']:
             print('Successfully sent message to channel')
             sleep(3)
+
+
+class TelegramJobPoster(TelegramAPIManager):
+    def __init__(self, job, states):
+        self.job = job
+        self.states = states
+        self.formatted = None
+
+    def format_job_to_message(self):
+        self.formatted = "{}\n[Cсылка]({})\n".format(self.job.title, self.job.link)
+
+    def post_job(self):
+        if not self.formatted:
+            self.format_job_to_message()
+        self.send_message(self.formatted)
+        self.states.add_value_by_key('last_link', self.job.link)
 
 
 class StateManager:
@@ -126,15 +128,14 @@ class StateManager:
 def main():
     my_states = StateManager('states')
     my_upwork_feed = RSSManager(UPWORK_FEED_URL)
-    my_upwork_feed.parse_feed_by_url()
-    my_telegram = TelegramAPIManager(CHAT_ID)
+    my_upwork_feed.parse_feed()
     my_jobs = JobManager(my_upwork_feed, my_states)
     while True:
         jobs = my_jobs.get_new_jobs()
         if jobs:
             for job in jobs:
-                new_job = Job(job['title'], job['link'], my_telegram, my_states)
-                new_job.post_job()
+                new_job = Job(job['title'], job['link'])
+                TelegramJobPoster(new_job, my_states).post_job()
 
 
 if __name__ == '__main__':
