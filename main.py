@@ -4,7 +4,7 @@ from time import sleep
 import feedparser
 import requests
 
-from settings import UPWORK_FEED_URL, TELEGRAM_BOT_TOKEN
+from settings import UPWORK_FEED_URL, TELEGRAM_BOT_TOKEN, CHAT_ID
 
 
 class RSSManager:
@@ -44,23 +44,30 @@ class RSSManager:
                 if job['id'] != last_id:
                     new_jobs += 1
                 else:
+                    print('Got new jobs: {}'.format(len(new_jobs)))
                     return jobs[:new_jobs]
         else:
+            print('No new jobs, sleeping 30 seconds')
             return []
 
 
 class Job:
-    def __init__(self, job_title, job_published, job_link):
+    def __init__(self, job_title, job_published, job_link, telegram, states):
         self.title = job_title
         self.datetime = job_published
         self.link = job_link
+        self.telegram = telegram
+        self.states = states
         self.formatted = None
-
-    def post_job(self):
-        print(self.formatted)
 
     def format_job_to_message(self):
         self.formatted = "{}\n[Cсылка]({})\n".format(self.title, self.link)
+
+    def post_job(self):
+        if not self.formatted:
+            self.format_job_to_message()
+        self.telegram.send_message(self.formatted)
+        self.states.add_value_by_key('last_id', self.job['id'])
 
 
 class TelegramAPIManager:
@@ -103,22 +110,17 @@ class StateManager:
 
 
 def main():
-    state = StateManager('states')
-    my_upwork_feed = RSSManager(UPWORK_FEED_URL, state)
-    my_telegram = TelegramAPIManager(-1001024228888)
+    my_states = StateManager('states')
+    my_upwork_feed = RSSManager(UPWORK_FEED_URL, my_states)
+    my_telegram = TelegramAPIManager(CHAT_ID)
     my_upwork_feed.parse_feed_by_url()
     while True:
         jobs = my_upwork_feed.get_new_jobs()
         if jobs:
-            print('Got new jobs: {}'.format(len(jobs)))
             for job in jobs:
-                title, published, link = job['title'], job['published'], job['link']
-                new_job = Job(title, published, link)
-                new_job.format_job_to_message()
-                my_telegram.send_message(new_job.formatted)
-                state.add_value_by_key('last_id', job['id'])
+                new_job = Job(job['title'], job['published'], job['link'], my_telegram, my_states)
+                new_job.post_job()
         else:
-            print('No new jobs, sleeping 30 seconds')
             sleep(30)
 
 
