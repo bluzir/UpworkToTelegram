@@ -36,7 +36,7 @@ class JobManager:
             if job['link'] != last_link:
                 new_jobs += 1
             else:
-                print('Find new jobs: {}'.format(new_jobs))
+                logging.info('Find new jobs: {}'.format(new_jobs))
                 self.state.add_value_by_key('last_link', jobs[0].link)
                 jobs = jobs[:new_jobs]
                 return Job.create_from_list(jobs)

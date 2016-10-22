@@ -14,12 +14,12 @@ logging.basicConfig(level=logging.INFO)
 def main():
     if TelegramAPIManager().check_token():
         logging.info('Start working')
-        my_states = StateManager('states')
-        my_upwork_feed = RSSManager()
-        my_upwork_feed.parse_feed()
-        my_jobs = JobManager(my_upwork_feed, my_states)
+        states = StateManager('states')
+        upwork_feed = RSSManager()
+        upwork_feed.parse_feed()
+        upwork_jobs = JobManager(upwork_feed, states)
         while True:
-            jobs = my_jobs.get_new_jobs()
+            jobs = upwork_jobs.get_new_jobs()
             for job in jobs:
                 TelegramJobPoster(job).post_job()
                 sleep(1)
