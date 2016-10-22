@@ -65,6 +65,11 @@ class JobManager:
                 jobs = jobs[:new_jobs]
                 return Job.create_from_list(jobs)
 
+        jobs = self.rss.feed['entries']
+        self.state.add_value_by_key('last_link', jobs[0].link)
+        return Job.create_from_list(jobs)
+
+
 
 class Job:
     def __init__(self, job_title, job_link):
@@ -97,6 +102,7 @@ class TelegramAPIManager:
     params = {
         'chat_id': chat_id,
         'parse_mode': parse_mode,
+        'reply_markup': {'InlineKeyboardMarkup': [{'text': 'Ссылка', 'url': {}}]}
     }
 
     def send_message(self, text):
@@ -109,9 +115,8 @@ class TelegramAPIManager:
 
 
 class TelegramJobPoster(TelegramAPIManager):
-    def __init__(self, job, states):
+    def __init__(self, job):
         self.job = job
-        self.states = states
         self.formatted = None
 
     def format_job_to_message(self):
@@ -152,7 +157,7 @@ def main():
     while True:
         jobs = my_jobs.get_new_jobs()
         for job in jobs:
-            TelegramJobPoster(job, my_states).post_job()
+            TelegramJobPoster(job).post_job()
             sleep(1)
         sleep(30)
 
