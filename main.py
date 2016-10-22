@@ -8,7 +8,7 @@ import requests
 
 from settings import UPWORK_FEED_URL, TELEGRAM_BOT_TOKEN, CHAT_ID
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class RSSManager:
@@ -22,7 +22,7 @@ class RSSManager:
             if feed['status'] == 200:
                 self.feed = feed
         except Exception as e:
-            print(e)
+            logging.debug(e)
 
 
 class JobManager:
@@ -70,7 +70,6 @@ class JobManager:
         return Job.create_from_list(jobs)
 
 
-
 class Job:
     def __init__(self, job_title, job_link):
         self._set_title(job_title)
@@ -102,16 +101,34 @@ class TelegramAPIManager:
     params = {
         'chat_id': chat_id,
         'parse_mode': parse_mode,
-        'reply_markup': {'InlineKeyboardMarkup': [{'text': 'Ссылка', 'url': {}}]}
     }
+
+    def check_token(self):
+        try:
+            full_url = self.telegram_bot_api_url.format(TELEGRAM_BOT_TOKEN, 'getMe')
+            response = requests.get(url=full_url)
+            decode = response.json()
+            if decode['ok']:
+                return True
+            else:
+                return False
+        except Exception as e:
+            logging.warning(e)
+            return False
 
     def send_message(self, text):
         self.params.update({'text': text})
         full_url = self.telegram_bot_api_url.format(TELEGRAM_BOT_TOKEN, 'sendMessage')
-        response = requests.get(url=full_url, params=self.params)
-        decode = response.json()
-        if decode['ok']:
-            logging.info('Successfully sent message')
+        try:
+            response = requests.get(url=full_url, params=self.params)
+            decode = response.json()
+            if decode['ok']:
+                logging.info('Successfully sent message')
+            else:
+                logging.debug(decode['error_code'], decode['description'])
+                logging.info('Cant send a message')
+        except Exception as e:
+            logging.debug(e)
 
 
 class TelegramJobPoster(TelegramAPIManager):
@@ -149,17 +166,21 @@ class StateManager:
 
 
 def main():
-    logging.info('Start working')
-    my_states = StateManager('states')
-    my_upwork_feed = RSSManager(UPWORK_FEED_URL)
-    my_upwork_feed.parse_feed()
-    my_jobs = JobManager(my_upwork_feed, my_states)
-    while True:
-        jobs = my_jobs.get_new_jobs()
-        for job in jobs:
-            TelegramJobPoster(job).post_job()
-            sleep(1)
-        sleep(30)
+    if TelegramAPIManager().check_token():
+        logging.info('Start working')
+        my_states = StateManager('states')
+        my_upwork_feed = RSSManager(UPWORK_FEED_URL)
+        my_upwork_feed.parse_feed()
+        my_jobs = JobManager(my_upwork_feed, my_states)
+        while True:
+            jobs = my_jobs.get_new_jobs()
+            for job in jobs:
+                TelegramJobPoster(job).post_job()
+                sleep(1)
+            sleep(30)
+    else:
+        logging.info('Invalid token')
+        pass
 
 
 if __name__ == '__main__':
